@@ -68,3 +68,11 @@ async def download_video(url: str = Query(...), format: str = Query("best")):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error during download: {str(e)}")
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the Social Media Video Downloader API. Use /download?url=<video_url>&format=<video_format> to download videos."}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
