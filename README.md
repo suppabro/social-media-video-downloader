@@ -54,6 +54,10 @@ A lightweight FastAPI-based web API that allows you to download videos from vari
 GET /download?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&format=best[height<=720]
 ```
 
+### Demo
+
+![Demo](demo.gif)
+
 
 ## ✅ Supported Platforms
 
