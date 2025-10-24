@@ -1,78 +1,106 @@
 import os
-import uuid
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
 import yt_dlp
-from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
+from fastapi.exceptions import HTTPException
+import logging
+import aiohttp # Make sure to add 'aiohttp' to your pyproject.toml dependencies
 
-app = FastAPI()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Load environment variables from .env file
-load_dotenv()
-
-# CORS configuration
-app.add_middleware(CORSMiddleware,
-    allow_origins=[os.getenv("ALLOWED_ORIGIN")],  # Adjust this to your needs
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="Social Media Video Downloader",
+    description="A lightweight API to download videos from various social media platforms using yt-dlp.",
+    version="1.0.0",
 )
 
+# --- NEW CODE TO SHOW THE WEBPAGE ---
+@app.get("/", response_class=HTMLResponse)
+async def get_homepage(request: Request):
+    """
+    Serve the main index.html file for the web interface.
+    """
+    html_file_path = os.path.join(os.path.dirname(__file__), "index.html")
+    
+    if os.path.exists(html_file_path):
+        with open(html_file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content, status_code=200)
+    else:
+        logger.error("index.html file not found.")
+        return JSONResponse(
+            status_code=404,
+            content={"message": "Frontend not found. Please add index.html to the root."}
+        )
+# --- END OF NEW CODE ---
+
+
+# --- YOUR ORIGINAL API ENDPOINT ---
 @app.get("/download")
-async def download_video(url: str = Query(...), format: str = Query("best")):
-    try:
-        # Extract metadata
-        with yt_dlp.YoutubeDL({'quiet': True, 'skip_download': True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-            title = info.get("title", "video").replace("/", "-").replace("\\", "-")
-            extension = "mp4"  # fallback extension
-            filename = f"{title}.{extension}"
-
-        # Create a unique output template
-        uid = uuid.uuid4().hex[:8]
-        output_template = f"/tmp/{uid}.%(ext)s"
-
-        ydl_opts = {
-            'format': format,
-            'outtmpl': output_template,
-            'quiet': True,
-            'merge_output_format': 'mp4',
-        }
-
-        # Download the video using yt-dlp Python API
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            result = ydl.download([url])
-
-        # Find actual downloaded file
-        actual_file_path = None
-        for f in os.listdir("/tmp"):
-            if f.startswith(uid):
-                actual_file_path = os.path.join("/tmp", f)
-                break
-
-        if not actual_file_path or not os.path.exists(actual_file_path):
-            raise HTTPException(status_code=500, detail="Download failed or file not found.")
-
-        # Stream file
-        def iterfile():
-            with open(actual_file_path, "rb") as f:
-                yield from f
-            os.unlink(actual_file_path)  # clean up after stream
-
-        return StreamingResponse(
-            iterfile(),
-            media_type="application/octet-stream",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+async def download_video(request: Request, url: str):
+    """
+    Downloads a video from the provided URL.
+    """
+    if not url:
+        logger.warning("Download request received with no URL.")
+        raise HTTPException(
+            status_code=400,
+            detail="URL is required. Please provide a 'url' query parameter."
         )
 
+    logger.info(f"Processing download for URL: {url}")
+
+    ydl_opts = {
+        'format': 'best',
+        'noplaylist': True,
+        'quiet': True,
+        'no_warnings': True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            video_url = info['url']
+            title = info.get('title', 'video')
+            
+            # Create a filename
+            filename = f"{title}.{info.get('ext', 'mp4')}"
+            
+            # Prepare headers for streaming
+            headers = {
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Content-Type': 'application/octet-stream',
+            }
+            
+            # We will use an async generator to stream the download
+            async def stream_video():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(video_url) as resp:
+                        if resp.status != 200:
+                            logger.error(f"Failed to fetch video stream. Status: {resp.status}")
+                            # Don't raise HTTPException inside generator, just log and stop
+                            return
+                        
+                        async for chunk in resp.content.iter_chunked(1024 * 1024): # 1MB chunks
+                            yield chunk
+            
+            logger.info(f"Starting stream for file: {filename}")
+            return StreamingResponse(stream_video(), headers=headers)
+
+    except yt_dlp.utils.DownloadError as e:
+        logger.error(f"yt-dlp DownloadError: {e}")
+        raise HTTPException(status_code=404, detail=f"Video not found or failed to process: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error during download: {str(e)}")
+        logger.error(f"An unexpected error occurred: {e}")
+        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to the Social Media Video Downloader API. Use /download?url=<video_url>&format=<video_format> to download videos."}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# --- Health check endpoint ---
+@app.get("/health")
+async def health_check():
+    """
+    Simple health check endpoint.
+    """
+    return JSONResponse(status_code=200, content={"status": "ok"})
