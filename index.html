@@ -49,8 +49,10 @@
         </div>
 
         <!-- Download Button -->
-        <button id="download-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800">
-            Download Video
+        <button id="download-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:bg-gray-500"
+        >
+            <span id="btn-text">Download Video</span>
+            <span id="btn-spinner" class="hidden animate-spin">◐</span>
         </button>
 
         <!-- Message Box -->
@@ -62,12 +64,12 @@
         const downloadBtn = document.getElementById('download-btn');
         const videoUrlInput = document.getElementById('video-url');
         const messageBox = document.getElementById('message-box');
+        const btnText = document.getElementById('btn-text');
+        const btnSpinner = document.getElementById('btn-spinner');
 
-        // This is the API's base URL. We use a relative path
-        // because the webpage and API are on the same site.
         const API_BASE_URL = window.location.origin;
 
-        downloadBtn.addEventListener('click', () => {
+        downloadBtn.addEventListener('click', async () => {
             const url = videoUrlInput.value.trim();
 
             if (url === '') {
@@ -75,23 +77,51 @@
                 return;
             }
 
-            // 1. Show a processing message
-            showMessage('Your download is starting...', 'success');
-
-            // 2. Construct the full download URL
-            const downloadUrl = `${API_BASE_URL}/download?url=${encodeURIComponent(url)}`;
+            // --- NEW JAVASCRIPT LOGIC ---
+            
+            // 1. Show loading state
+            setLoading(true);
+            showMessage('Finding video, please wait...', 'info');
 
             try {
-                // 3. Create a temporary link element to trigger the download
+                // 2. Call our API to get the direct link
+                const apiUrl = `${API_BASE_URL}/download?url=${encodeURIComponent(url)}`;
+                const response = await fetch(apiUrl);
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Could not fetch video info.');
+                }
+
+                const data = await response.json();
+                
+                if (data.download_url && data.filename) {
+                    // 3. We got the link! Now trigger the download.
+                    showMessage('Your download is starting!', 'success');
+                    triggerDownload(data.download_url, data.filename);
+                } else {
+                    throw new Error('API did not return a valid download link.');
+                }
+
+            } catch (error) {
+                console.error('Error fetching download link:', error);
+                showMessage(error.message, 'error');
+            } finally {
+                // 4. Hide loading state
+                setLoading(false);
+            }
+        });
+
+        function triggerDownload(url, filename) {
+            try {
                 const a = document.createElement('a');
-                a.href = downloadUrl;
-                a.download = ''; // Let the browser and API handle the filename
+                a.href = url;
+                a.download = filename; // Set the filename
                 
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
 
-                // 4. Clear the input and hide the message after a delay
                 videoUrlInput.value = '';
                 setTimeout(() => {
                     messageBox.classList.add('hidden');
@@ -99,21 +129,32 @@
 
             } catch (error) {
                 console.error('Error triggering download:', error);
-                showMessage('An error occurred. Please check the console.', 'error');
+                showMessage('An error occurred during download.', 'error');
             }
-        });
+        }
 
-        // Helper function to show messages
+        function setLoading(isLoading) {
+            if (isLoading) {
+                downloadBtn.disabled = true;
+                btnText.classList.add('hidden');
+                btnSpinner.classList.remove('hidden');
+            } else {
+                downloadBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                btnSpinner.classList.add('hidden');
+            }
+        }
+
         function showMessage(message, type = 'error') {
             messageBox.textContent = message;
-            messageBox.classList.remove('hidden');
+            messageBox.classList.remove('hidden', 'bg-red-500', 'bg-green-500', 'bg-blue-500', 'text-white');
             
             if (type === 'error') {
                 messageBox.classList.add('bg-red-500', 'text-white');
-                messageBox.classList.remove('bg-green-500');
-            } else {
+            } else if (type === 'success') {
                 messageBox.classList.add('bg-green-500', 'text-white');
-                messageBox.classList.remove('bg-red-500');
+            } else { // 'info'
+                messageBox.classList.add('bg-blue-500', 'text-white');
             }
         }
     </script>
