@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Video Downloader</title>
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 2. Use a modern font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+    <!-- 3. Configure Tailwind for dark mode -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-md bg-gray-800 p-6 md:p-8 rounded-xl shadow-2xl">
+        
+        <!-- Header -->
+        <h1 class="text-2xl md:text-3xl font-bold text-center mb-2 text-blue-400">
+            Social Media Video Downloader
+        </h1>
+        <p class="text-gray-400 text-center mb-6">
+            Paste a link from YouTube, TikTok, Instagram, etc. to download.
+        </p>
+
+        <!-- URL Input -->
+        <div class="mb-4">
+            <label for="video-url" class="block text-sm font-medium text-gray-300 mb-2">Video URL</label>
+            <input 
+                type="text" 
+                id="video-url" 
+                placeholder="https://www.youtube.com/watch?v=..."
+                class="w-full px-4 py-3 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
+            >
+        </div>
+
+        <!-- Download Button -->
+        <button id="download-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800">
+            Download Video
+        </button>
+
+        <!-- Message Box -->
+        <div id="message-box" class="mt-4 text-center p-3 rounded-lg hidden"></div>
+
+    </div>
+
+    <script>
+        const downloadBtn = document.getElementById('download-btn');
+        const videoUrlInput = document.getElementById('video-url');
+        const messageBox = document.getElementById('message-box');
+
+        // This is the API's base URL. We use a relative path
+        // because the webpage and API are on the same site.
+        const API_BASE_URL = window.location.origin;
+
+        downloadBtn.addEventListener('click', () => {
+            const url = videoUrlInput.value.trim();
+
+            if (url === '') {
+                showMessage('Please paste a video URL first.', 'error');
+                return;
+            }
+
+            // 1. Show a processing message
+            showMessage('Your download is starting...', 'success');
+
+            // 2. Construct the full download URL
+            const downloadUrl = `${API_BASE_URL}/download?url=${encodeURIComponent(url)}`;
+
+            try {
+                // 3. Create a temporary link element to trigger the download
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = ''; // Let the browser and API handle the filename
+                
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                // 4. Clear the input and hide the message after a delay
+                videoUrlInput.value = '';
+                setTimeout(() => {
+                    messageBox.classList.add('hidden');
+                }, 4000);
+
+            } catch (error) {
+                console.error('Error triggering download:', error);
+                showMessage('An error occurred. Please check the console.', 'error');
+            }
+        });
+
+        // Helper function to show messages
+        function showMessage(message, type = 'error') {
+            messageBox.textContent = message;
+            messageBox.classList.remove('hidden');
+            
+            if (type === 'error') {
+                messageBox.classList.add('bg-red-500', 'text-white');
+                messageBox.classList.remove('bg-green-500');
+            } else {
+                messageBox.classList.add('bg-green-500', 'text-white');
+                messageBox.classList.remove('bg-red-500');
+            }
+        }
+    </script>
+</body>
+</html>
