@@ -1,10 +1,9 @@
 import os
 import yt_dlp
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.exceptions import HTTPException
 import logging
-import aiohttp
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +15,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# --- NEW CODE TO SHOW THE WEBPAGE ---
+# --- Endpoint to serve the HTML webpage ---
 @app.get("/", response_class=HTMLResponse)
 async def get_homepage(request: Request):
     """
@@ -34,14 +33,12 @@ async def get_homepage(request: Request):
             status_code=404,
             content={"message": "Frontend not found. Please add index.html to the root."}
         )
-# --- END OF NEW CODE ---
 
-
-# --- YOUR ORIGINAL API ENDPOINT ---
+# --- NEW, SIMPLIFIED Download Endpoint ---
 @app.get("/download")
-async def download_video(request: Request, url: str):
+async def get_download_link(request: Request, url: str):
     """
-    Downloads a video from the provided URL.
+    Gets a direct download link for the video and returns it as JSON.
     """
     if not url:
         logger.warning("Download request received with no URL.")
@@ -64,37 +61,25 @@ async def download_video(request: Request, url: str):
             info = ydl.extract_info(url, download=False)
             video_url = info['url']
             title = info.get('title', 'video')
-            
-            # Create a filename
             filename = f"{title}.{info.get('ext', 'mp4')}"
             
-            # Prepare headers for streaming
-            headers = {
-                'Content-Disposition': f'attachment; filename="{filename}"',
-                'Content-Type': 'application/octet-stream',
-            }
+            logger.info(f"Successfully found link for: {filename}")
             
-            # We will use an async generator to stream the download
-            async def stream_video():
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(video_url) as resp:
-                        if resp.status != 200:
-                            logger.error(f"Failed to fetch video stream. Status: {resp.status}")
-                            # Don't raise HTTPException inside generator, just log and stop
-                            return
-                        
-                        async for chunk in resp.content.iter_chunked(1024 * 1024): # 1MB chunks
-                            yield chunk
-            
-            logger.info(f"Starting stream for file: {filename}")
-            return StreamingResponse(stream_video(), headers=headers)
+            # Return the direct URL and filename to the frontend
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "download_url": video_url,
+                    "filename": filename
+                }
+            )
 
     except yt_dlp.utils.DownloadError as e:
         logger.error(f"yt-dlp DownloadError: {e}")
-        raise HTTPException(status_code=404, detail=f"Video not found or failed to process: {e}")
+        raise HTTPException(status_code=404, detail=f"Video not found or failed to process: {str(e)}")
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}")
-        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
+        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {str(e)}")
 
 
 # --- Health check endpoint ---
