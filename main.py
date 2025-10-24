@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.exceptions import HTTPException
 import logging
-import aiohttp # Make sure to add 'aiohttp' to your pyproject.toml dependencies
+import aiohttp
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
